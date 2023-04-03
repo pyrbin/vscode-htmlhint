@@ -7,6 +7,7 @@ import * as path from "path";
 import * as server from "vscode-languageserver";
 import * as htmlhint from "htmlhint";
 import fs = require("fs");
+import * as glob from "glob";
 let stripJsonComments: any = require("strip-json-comments");
 
 interface Settings {
@@ -164,7 +165,46 @@ function loadConfigurationFile(configFile): any {
       ruleset = JSON.parse(stripJsonComments(config));
     } catch (e) {}
   }
+
+  const RULES_KEY = "vscode-ext-rules";
+
+  if (ruleset != undefined && ruleset[RULES_KEY]) {
+    loadCustomRules(path.join(path.parse(configFile).dir, ruleset[RULES_KEY]));
+  }
+
   return ruleset;
+}
+
+function loadCustomRules(rulesdir: string) {
+  rulesdir = rulesdir.replace(/\\/g, "/");
+  if (fs.existsSync(rulesdir)) {
+    if (fs.statSync(rulesdir).isDirectory()) {
+      rulesdir += /\/$/.test(rulesdir) ? "" : "/";
+      rulesdir += "**/*.js";
+      const arrFiles = glob.sync(rulesdir, {
+        dot: false,
+        nodir: true,
+        strict: false,
+        silent: true,
+      });
+      arrFiles.forEach((file) => {
+        loadRule(file);
+      });
+    } else {
+      loadRule(rulesdir);
+    }
+  }
+}
+
+// load rule
+function loadRule(filepath: string) {
+  filepath = path.resolve(filepath);
+  try {
+    const module = require(filepath);
+    module(linter);
+  } catch (e) {
+    // ignore
+  }
 }
 
 function getErrorMessage(err: any, document: server.TextDocument): string {
